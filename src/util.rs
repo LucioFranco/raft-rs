@@ -30,8 +30,8 @@ pub const NO_LIMIT: u64 = u64::MAX;
 /// use raft::{util::limit_size, prelude::*};
 ///
 /// let template = {
-///     let mut entry = Entry::new();
-///     entry.set_data("*".repeat(100).into_bytes());
+///     let mut entry = Entry::default();
+///     entry.data = "*".repeat(100).into_bytes();
 ///     entry
 /// };
 ///

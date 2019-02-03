@@ -198,8 +198,8 @@ fn test_raw_node_propose_and_conf_change() {
 
             let cc = conf_change(ConfChangeType::AddNode, 1);
             let mut buf = BytesMut::new();
-            cc.encode(&mut buf);
-            let ccdata = buf.to_vec();
+            cc.encode(&mut buf).unwrap();
+            ccdata = buf.to_vec();
             
             raw_node.propose_conf_change(vec![], cc).expect("");
 
@@ -219,7 +219,7 @@ fn test_raw_node_propose_and_conf_change() {
     assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].data, b"somedata");
     assert_eq!(entries[1].entry_type, EntryType::EntryConfChange as i32);
-    assert_eq!(entries[1].data, &*ccdata);
+    assert_eq!(entries[1].data, ccdata);
 }
 
 // test_raw_node_propose_add_duplicate_node ensures that two proposes to add the same node should
@@ -274,7 +274,7 @@ fn test_raw_node_propose_add_duplicate_node() {
     let last_index = s.last_index().unwrap();
 
     // the last three entries should be: ConfChange cc1, cc1, cc2
-    let mut entries = s.entries(last_index - 2, last_index + 1, NO_LIMIT).unwrap();
+    let entries = s.entries(last_index - 2, last_index + 1, NO_LIMIT).unwrap();
     assert_eq!(entries.len(), 3);
     assert_eq!(entries[0].data, ccdata1);
     assert_eq!(entries[2].data, ccdata2);

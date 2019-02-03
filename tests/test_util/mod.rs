@@ -26,7 +26,6 @@
 // limitations under the License.
 
 use env_logger;
-use protobuf::RepeatedField;
 use raft::eraftpb::*;
 use raft::storage::MemStorage;
 use raft::*;
@@ -209,9 +208,13 @@ pub fn empty_entry(term: u64, index: u64) -> Entry {
 
 pub fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
     let mut s = Snapshot::default();
-    s.metadata.iter_mut().next().unwrap().index = index;
-    s.metadata.iter_mut().next().unwrap().term = term;
-    s.metadata.iter_mut().next().unwrap().conf_state.iter_mut().next().unwrap().nodes = nodes;
+    let mut m = SnapshotMetadata::default();
+    let mut cs = ConfState::default();
+    m.index = index;
+    m.term = term;
+    cs.nodes = nodes;
+    m.conf_state = Some(cs);
+    s.metadata = Some(m);
     s
 }
 
