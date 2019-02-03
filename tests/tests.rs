@@ -18,6 +18,8 @@
 extern crate log;
 extern crate env_logger;
 extern crate protobuf;
+extern crate prost;
+extern crate bytes;
 extern crate raft;
 extern crate rand;
 #[cfg(feature = "failpoint")]

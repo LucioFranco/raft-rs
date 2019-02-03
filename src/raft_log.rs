@@ -489,28 +489,28 @@ mod test {
 
     use eraftpb;
     use errors::{Error, StorageError};
-    use protobuf;
     use raft_log::{self, RaftLog};
     use setup_for_test;
     use storage::MemStorage;
+    use prost::Message;
 
     fn new_raft_log(s: MemStorage) -> RaftLog<MemStorage> {
         RaftLog::new(s, String::from(""))
     }
 
     fn new_entry(index: u64, term: u64) -> eraftpb::Entry {
-        let mut e = eraftpb::Entry::new();
-        e.set_term(term);
-        e.set_index(index);
+        let mut e = eraftpb::Entry::default();
+        e.term = term;
+        e.index = index;
         e
     }
 
     fn new_snapshot(meta_index: u64, meta_term: u64) -> eraftpb::Snapshot {
-        let mut meta = eraftpb::SnapshotMetadata::new();
-        meta.set_index(meta_index);
-        meta.set_term(meta_term);
-        let mut snapshot = eraftpb::Snapshot::new();
-        snapshot.set_metadata(meta);
+        let mut meta = eraftpb::SnapshotMetadata::default();
+        meta.index = meta_index;
+        meta.term = meta_term;
+        let mut snapshot = eraftpb::Snapshot::default();
+        snapshot.metadata = Some(meta);
         snapshot
     }
 
@@ -955,7 +955,7 @@ mod test {
         let (offset, num) = (100u64, 100u64);
         let (last, half) = (offset + num, offset + num / 2);
         let halfe = new_entry(half, half);
-        let halfe_size = u64::from(protobuf::Message::compute_size(&halfe));
+        let halfe_size = u64::from(halfe.encoded_len() as u64);
 
         let store = MemStorage::new();
         store

@@ -200,18 +200,18 @@ mod test {
     use setup_for_test;
 
     fn new_entry(index: u64, term: u64) -> Entry {
-        let mut e = Entry::new();
-        e.set_term(term);
-        e.set_index(index);
+        let mut e = Entry::default();
+        e.term = term;
+        e.index = index;
         e
     }
 
     fn new_snapshot(index: u64, term: u64) -> Snapshot {
-        let mut snap = Snapshot::new();
-        let mut meta = SnapshotMetadata::new();
-        meta.set_index(index);
-        meta.set_term(term);
-        snap.set_metadata(meta);
+        let mut snap = Snapshot::default();
+        let mut meta = SnapshotMetadata::default();
+        meta.index = index;
+        meta.term = term;
+        snap.metadata = Some(meta);
         snap
     }
 
@@ -346,7 +346,7 @@ mod test {
         let s = new_snapshot(6, 2);
         u.restore(s.clone());
 
-        assert_eq!(u.offset, s.metadata.unwrap().index + 1);
+        assert_eq!(u.offset, s.metadata.iter().next().unwrap().index + 1);
         assert!(u.entries.is_empty());
         assert_eq!(u.snapshot.unwrap(), s);
     }

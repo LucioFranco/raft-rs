@@ -159,13 +159,13 @@ fn on_ready(r: &mut RawNode<MemStorage>, cbs: &mut HashMap<u8, ProposeCallback>)
             // after restart. Here we just ignore this because we use a Memory storage.
             _last_apply_index = entry.index;
 
-            if entry.get_data().is_empty() {
+            if entry.data.is_empty() {
                 // Emtpy entry, when the peer becomes Leader it will send an empty entry.
                 continue;
             }
 
-            if entry.get_entry_type() == EntryType::EntryNormal {
-                if let Some(cb) = cbs.remove(entry.get_data().get(0).unwrap()) {
+            if entry.entry_type == EntryType::EntryNormal as i32 {
+                if let Some(cb) = cbs.remove(entry.data.get(0).unwrap()) {
                     cb();
                 }
             }

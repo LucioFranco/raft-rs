@@ -324,7 +324,6 @@ impl Storage for MemStorage {
 #[cfg(test)]
 mod test {
     use eraftpb::{ConfState, Entry, Snapshot};
-    use protobuf;
 
     use errors::{Error as RaftError, StorageError};
     use setup_for_test;
@@ -333,22 +332,22 @@ mod test {
     // TODO extract these duplicated utility functions for tests
 
     fn new_entry(index: u64, term: u64) -> Entry {
-        let mut e = Entry::new();
-        e.set_term(term);
-        e.set_index(index);
+        let mut e = Entry::default();
+        e.term = term;
+        e.index = index;
         e
     }
 
-    fn size_of<T: protobuf::Message>(m: &T) -> u32 {
-        m.compute_size()
+    fn size_of<T: prost::Message>(m: &T) -> u32 {
+        m.encoded_len() as u32
     }
 
     fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>, data: Vec<u8>) -> Snapshot {
-        let mut s = Snapshot::new();
-        s.metadata.set_index(index);
-        s.metadata.set_term(term);
-        s.metadata.mut_conf_state().set_nodes(nodes);
-        s.set_data(data);
+        let mut s = Snapshot::default();
+        s.metadata.iter_mut().next().unwrap().index = index;
+        s.metadata.iter_mut().next().unwrap().term = term;
+        s.metadata.iter_mut().next().unwrap().conf_state.iter_mut().next().unwrap().nodes = nodes;
+        s.data = data;
         s
     }
 
@@ -528,8 +527,8 @@ mod test {
         setup_for_test();
         let ents = vec![new_entry(3, 3), new_entry(4, 4), new_entry(5, 5)];
         let nodes = vec![1, 2, 3];
-        let mut cs = ConfState::new();
-        cs.set_nodes(nodes.clone());
+        let mut cs = ConfState::default();
+        cs.nodes = nodes.clone();
         let data = b"data".to_vec();
 
         let mut tests = vec![
