@@ -16,7 +16,7 @@
 
 use std::u64;
 
-use protobuf::Message;
+use prost::Message;
 
 /// A number to represent that there is no limit.
 pub const NO_LIMIT: u64 = u64::MAX;
@@ -58,10 +58,10 @@ pub fn limit_size<T: Message + Clone>(entries: &mut Vec<T>, max: u64) {
         .iter()
         .take_while(|&e| {
             if size == 0 {
-                size += u64::from(Message::compute_size(e));
+                size += u64::from(e.encoded_len() as u64);
                 true
             } else {
-                size += u64::from(Message::compute_size(e));
+                size += u64::from(e.encoded_len() as u64);
                 size <= max
             }
         })

@@ -329,7 +329,7 @@ fn test_progress_paused() {
     let mut raft = new_test_raft(1, vec![1, 2], 5, 1, new_storage());
     raft.become_candidate();
     raft.become_leader();
-    let mut m = Message::new();
+    let mut m = Message::default();
     m.set_from(1);
     m.set_to(1);
     m.set_msg_type(MessageType::MsgPropose);
@@ -401,7 +401,7 @@ fn test_leader_election_with_config(pre_vote: bool) {
     ];
 
     for (i, &mut (ref mut network, state, term)) in tests.iter_mut().enumerate() {
-        let mut m = Message::new();
+        let mut m = Message::default();
         m.set_from(1);
         m.set_to(1);
         m.set_msg_type(MessageType::MsgHup);
@@ -533,18 +533,18 @@ fn test_leader_election_overwrite_newer_logs_with_config(pre_vote: bool) {
             entries.len()
         );
         assert_eq!(
-            entries[0].get_term(),
+            entries[0].term,
             1,
             "node {}: term at index 1 == {}, want 1",
             id,
-            entries[0].get_term()
+            entries[0].term
         );
         assert_eq!(
-            entries[1].get_term(),
+            entries[1].term,
             3,
             "node {}: term at index 2 == {}, want 3",
             id,
-            entries[1].get_term()
+            entries[1].term
         );
     }
 }
@@ -707,13 +707,13 @@ fn test_log_replicatioin() {
                 .filter(|m| m.get_msg_type() == MessageType::MsgPropose)
                 .enumerate()
             {
-                if ents[k].get_data() != m.get_entries()[0].get_data() {
+                if ents[k].get_data() != m.entries[0].get_data() {
                     panic!(
                         "#{}.{}: data = {:?}, want {:?}",
                         i,
                         j,
                         ents[k].get_data(),
-                        m.get_entries()[0].get_data()
+                        m.entries[0].get_data()
                     );
                 }
             }
@@ -1205,7 +1205,7 @@ fn test_pass_election_timeout() {
 fn test_handle_msg_append() {
     setup_for_test();
     let nm = |term, log_term, index, commit, ents: Option<Vec<(u64, u64)>>| {
-        let mut m = Message::new();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgAppend);
         m.set_term(term);
         m.set_log_term(log_term);
@@ -1346,7 +1346,7 @@ fn test_handle_heartbeat_resp() {
 
     // Once we have an MsgAppResp, heartbeats no longer send MsgApp.
     let mut m = new_message(2, 0, MessageType::MsgAppendResponse, 0);
-    m.set_index(msgs[0].get_index() + msgs[0].get_entries().len() as u64);
+    m.set_index(msgs[0].index + msgs[0].entries.len() as u64);
     sm.step(m).expect("");
     // Consume the message sent in response to MsgAppResp
     sm.read_messages();
@@ -1433,8 +1433,8 @@ fn test_msg_append_response_wait_reset() {
     assert_eq!(msgs.len(), 1);
     assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].get_to(), 2);
-    assert_eq!(msgs[0].get_entries().len(), 1);
-    assert_eq!(msgs[0].get_entries()[0].get_index(), 2);
+    assert_eq!(msgs[0].entries.len(), 1);
+    assert_eq!(msgs[0].entries[0].index, 2);
 
     // Now Node 3 acks the first entry. This releases the wait and entry 2 is sent.
     m = new_message(3, 0, MessageType::MsgAppendResponse, 0);
@@ -1444,8 +1444,8 @@ fn test_msg_append_response_wait_reset() {
     assert_eq!(msgs.len(), 1);
     assert_eq!(msgs[0].get_msg_type(), MessageType::MsgAppend);
     assert_eq!(msgs[0].get_to(), 3);
-    assert_eq!(msgs[0].get_entries().len(), 1);
-    assert_eq!(msgs[0].get_entries()[0].get_index(), 2);
+    assert_eq!(msgs[0].entries.len(), 1);
+    assert_eq!(msgs[0].entries[0].index, 2);
 }
 
 #[test]
@@ -2455,8 +2455,8 @@ fn test_leader_append_response() {
             panic!("#{} msg_num = {}, want {}", i, msgs.len(), wmsg_num);
         }
         for (j, msg) in msgs.drain(..).enumerate() {
-            if msg.get_index() != windex {
-                panic!("#{}.{} index = {}, want {}", i, j, msg.get_index(), windex);
+            if msg.index != windex {
+                panic!("#{}.{} index = {}, want {}", i, j, msg.index, windex);
             }
             if msg.get_commit() != wcommitted {
                 panic!(
@@ -2523,8 +2523,8 @@ fn test_bcast_beat() {
                 MessageType::MsgHeartbeat
             );
         }
-        if m.get_index() != 0 {
-            panic!("#{}: prev_index = {}, want {}", i, m.get_index(), 0);
+        if m.index != 0 {
+            panic!("#{}: prev_index = {}, want {}", i, m.index, 0);
         }
         if m.get_log_term() != 0 {
             panic!("#{}: prev_term = {}, want {}", i, m.get_log_term(), 0);
@@ -2542,8 +2542,8 @@ fn test_bcast_beat() {
             }
             want_commit_map.remove(&m.get_to());
         }
-        if !m.get_entries().is_empty() {
-            panic!("#{}: entries count = {}, want 0", i, m.get_entries().len());
+        if !m.entries.is_empty() {
+            panic!("#{}: entries count = {}, want 0", i, m.entries.len());
         }
     }
 }
@@ -2639,7 +2639,7 @@ fn test_send_append_for_progress_probe() {
             do_send_append(&mut r, 2);
             let msg = r.read_messages();
             assert_eq!(msg.len(), 1);
-            assert_eq!(msg[0].get_index(), 0);
+            assert_eq!(msg[0].index, 0);
         }
 
         assert!(r.prs().get(2).unwrap().paused);
@@ -2667,7 +2667,7 @@ fn test_send_append_for_progress_probe() {
         .expect("");
     let msg = r.read_messages();
     assert_eq!(msg.len(), 1);
-    assert_eq!(msg[0].get_index(), 0);
+    assert_eq!(msg[0].index, 0);
     assert!(r.prs().get(2).unwrap().paused);
 }
 
@@ -2734,16 +2734,16 @@ fn test_restore() {
 
     let mut sm = new_test_raft(1, vec![1, 2], 10, 1, new_storage());
     assert!(sm.restore(s.clone()));
-    assert_eq!(sm.raft_log.last_index(), s.get_metadata().get_index());
+    assert_eq!(sm.raft_log.last_index(), s.metadata.unwrap().index);
     assert_eq!(
-        sm.raft_log.term(s.get_metadata().get_index()).unwrap(),
-        s.get_metadata().get_term()
+        sm.raft_log.term(s.metadata.unwrap().index).unwrap(),
+        s.metadata.unwrap().term
     );
     assert_eq!(
         sm.prs().voter_ids(),
-        &s.get_metadata()
-            .get_conf_state()
-            .get_nodes()
+        &s.metadata.unwrap()
+            .conf_state.unwrap()
+            .nodes
             .iter()
             .cloned()
             .collect::<HashSet<_>>(),
@@ -2767,7 +2767,7 @@ fn test_restore_ignore_snapshot() {
     assert_eq!(sm.raft_log.committed, commit);
 
     // ignore snapshot and fast forward commit
-    s.mut_metadata().set_index(commit + 1);
+    s.metadata.set_index(commit + 1);
     assert!(!sm.restore(s));
     assert_eq!(sm.raft_log.committed, commit + 1);
 }
@@ -3686,7 +3686,7 @@ fn test_learner_log_replication() {
 fn test_restore_with_learner() {
     setup_for_test();
     let mut s = new_snapshot(11, 11, vec![1, 2]);
-    s.mut_metadata().mut_conf_state().mut_learners().push(3);
+    s.metadata.mut_conf_state().mut_learners().push(3);
 
     let mut sm = new_test_learner_raft(3, vec![1, 2], vec![3], 10, 1, new_storage());
     assert!(sm.is_learner);
@@ -3696,12 +3696,12 @@ fn test_restore_with_learner() {
     assert_eq!(sm.prs().voters().count(), 2);
     assert_eq!(sm.prs().learners().count(), 1);
 
-    for &node in s.get_metadata().get_conf_state().get_nodes() {
+    for &node in s.metadata.unwrap().conf_state.unwrap().nodes {
         assert!(sm.prs().get(node).is_some());
         assert!(!sm.prs().learner_ids().contains(&node));
     }
 
-    for &node in s.get_metadata().get_conf_state().get_learners() {
+    for &node in s.metadata.unwrap().conf_state.unwrap().learners {
         assert!(sm.prs().get(node).is_some());
         assert!(sm.prs().learner_ids().contains(&node));
     }
@@ -3715,7 +3715,7 @@ fn test_restore_with_learner() {
 fn test_restore_invalid_learner() {
     setup_for_test();
     let mut s = new_snapshot(11, 11, vec![1, 2]);
-    s.mut_metadata().mut_conf_state().mut_learners().push(3);
+    s.metadata.mut_conf_state().mut_learners().push(3);
 
     let mut sm = new_test_raft(3, vec![1, 2, 3], 10, 1, new_storage());
     assert!(!sm.is_learner);
@@ -3739,7 +3739,7 @@ fn test_restore_learner_promotion() {
 fn test_learner_receive_snapshot() {
     setup_for_test();
     let mut s = new_snapshot(11, 11, vec![1]);
-    s.mut_metadata().mut_conf_state().mut_learners().push(2);
+    s.metadata.mut_conf_state().mut_learners().push(2);
 
     let mut n1 = new_test_learner_raft(1, vec![1], vec![2], 10, 1, new_storage());
     let n2 = new_test_learner_raft(2, vec![1], vec![2], 10, 1, new_storage());
@@ -3761,7 +3761,7 @@ fn test_learner_receive_snapshot() {
         network.peers.get_mut(&1).unwrap().tick();
     }
 
-    let mut msg = Message::new();
+    let mut msg = Message::default();
     msg.set_from(1);
     msg.set_to(1);
     msg.set_msg_type(MessageType::MsgBeat);

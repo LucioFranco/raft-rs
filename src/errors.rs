@@ -15,6 +15,7 @@ use std::error;
 use std::{cmp, io, result};
 
 use protobuf::ProtobufError;
+use prost::EncodeError;
 
 quick_error! {
     /// The base error type for raft
@@ -50,6 +51,13 @@ quick_error! {
         }
         /// A Protobuf message failed in some manner.
         Codec(err: ProtobufError) {
+            from()
+            cause(err)
+            description(err.description())
+            display("protobuf error {:?}", err)
+        }
+        /// A Prost encoding error.
+        Codec2(err: EncodeError) {
             from()
             cause(err)
             description(err.description())

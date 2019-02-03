@@ -36,7 +36,8 @@ use eraftpb::{
     ConfChange, ConfChangeType, ConfState, Entry, EntryType, HardState, Message, MessageType,
     Snapshot,
 };
-use protobuf::{self, RepeatedField};
+use prost::Message as ProstMessage;
+use bytes::BytesMut;
 
 use super::config::Config;
 use super::errors::{Error, Result};
@@ -88,7 +89,7 @@ fn is_response_msg(t: MessageType) -> bool {
 
 /// For a given snapshot, determine if it's empty or not.
 pub fn is_empty_snap(s: &Snapshot) -> bool {
-    s.get_metadata().get_index() == 0
+    s.metadata.iter().next().unwrap().index == 0
 }
 
 /// Ready encapsulates the entries and messages that are ready to read,
@@ -147,7 +148,7 @@ impl Ready {
         }
         let hs = raft.hard_state();
         if &hs != prev_hs {
-            if hs.get_vote() != prev_hs.get_vote() || hs.get_term() != prev_hs.get_term() {
+            if hs.vote != prev_hs.vote || hs.term != prev_hs.term {
                 rd.must_sync = true;
             }
             rd.hs = Some(hs);
@@ -232,19 +233,20 @@ impl<T: Storage> RawNode<T> {
             rn.raft.become_follower(1, INVALID_ID);
             let mut ents = Vec::with_capacity(peers.len());
             for (i, peer) in peers.iter_mut().enumerate() {
-                let mut cc = ConfChange::new();
+                let mut cc = ConfChange::default();
                 cc.set_change_type(ConfChangeType::AddNode);
-                cc.set_node_id(peer.id);
+                cc.node_id = peer.id;
                 if let Some(ctx) = peer.context.take() {
-                    cc.set_context(ctx);
+                    cc.context = ctx;
                 }
-                let data =
-                    protobuf::Message::write_to_bytes(&cc).expect("unexpected marshal error");
-                let mut e = Entry::new();
-                e.set_entry_type(EntryType::EntryConfChange);
-                e.set_term(1);
-                e.set_index(i as u64 + 1);
-                e.set_data(data);
+                let mut bytes = BytesMut::new();
+                cc.encode(&mut bytes).expect("unexpected marshal error");
+
+                let mut e = Entry::default();
+                e.entry_type = EntryType::EntryConfChange as i32;
+                e.term = 1;
+                e.index = i as u64 + 1;
+                e.data = bytes.to_vec();
                 ents.push(e);
             }
             rn.raft.raft_log.append(&ents);
@@ -267,18 +269,18 @@ impl<T: Storage> RawNode<T> {
             self.prev_ss = rd.ss.unwrap();
         }
         if let Some(e) = rd.hs {
-            if e != HardState::new() {
+            if e != HardState::default() {
                 self.prev_hs = e;
             }
         }
         if !rd.entries.is_empty() {
             let e = rd.entries.last().unwrap();
-            self.raft.raft_log.stable_to(e.get_index(), e.get_term());
+            self.raft.raft_log.stable_to(e.index, e.term);
         }
-        if rd.snapshot != Snapshot::new() {
+        if rd.snapshot != Snapshot::default() {
             self.raft
                 .raft_log
-                .stable_snap_to(rd.snapshot.get_metadata().get_index());
+                .stable_snap_to(rd.snapshot.metadata.unwrap().index);
         }
         if !rd.read_states.is_empty() {
             self.raft.read_states.clear();
@@ -299,64 +301,67 @@ impl<T: Storage> RawNode<T> {
 
     /// Campaign causes this RawNode to transition to candidate state.
     pub fn campaign(&mut self) -> Result<()> {
-        let mut m = Message::new();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgHup);
         self.raft.step(m)
     }
 
     /// Propose proposes data be appended to the raft log.
     pub fn propose(&mut self, context: Vec<u8>, data: Vec<u8>) -> Result<()> {
-        let mut m = Message::new();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgPropose);
-        m.set_from(self.raft.id);
-        let mut e = Entry::new();
-        e.set_data(data);
-        e.set_context(context);
-        m.set_entries(RepeatedField::from_vec(vec![e]));
+        m.from = self.raft.id;
+        let mut e = Entry::default();
+        e.data = data;
+        e.context = context;
+        m.entries = vec![e];
         self.raft.step(m)
     }
 
     /// ProposeConfChange proposes a config change.
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_pass_by_value))]
     pub fn propose_conf_change(&mut self, context: Vec<u8>, cc: ConfChange) -> Result<()> {
-        let data = protobuf::Message::write_to_bytes(&cc)?;
-        let mut m = Message::new();
-        m.set_msg_type(MessageType::MsgPropose);
-        let mut e = Entry::new();
-        e.set_entry_type(EntryType::EntryConfChange);
-        e.set_data(data);
-        e.set_context(context);
-        m.set_entries(RepeatedField::from_vec(vec![e]));
+        let mut data = BytesMut::new();
+        cc.encode(&mut data)?;
+        let mut m = Message::default();
+        m.msg_type = MessageType::MsgPropose as i32;
+        let mut e = Entry::default();
+        e.entry_type = EntryType::EntryConfChange as i32;
+        e.data = data.to_vec();
+        e.context = context;
+        m.entries = vec![e];
         self.raft.step(m)
     }
 
     /// Takes the conf change and applies it.
     pub fn apply_conf_change(&mut self, cc: &ConfChange) -> ConfState {
-        if cc.get_node_id() == INVALID_ID {
-            let mut cs = ConfState::new();
-            cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
-            cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
+        if cc.node_id == INVALID_ID {
+            let mut cs = ConfState::default();
+            cs.nodes = self.raft.prs().voter_ids().iter().cloned().collect();
+            cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
             return cs;
         }
-        let nid = cc.get_node_id();
-        match cc.get_change_type() {
+        let nid = cc.node_id;
+        let ct = ConfChangeType::from_i32(cc.change_type).unwrap();
+        match ct {
             ConfChangeType::AddNode => self.raft.add_node(nid),
             ConfChangeType::AddLearnerNode => self.raft.add_learner(nid),
             ConfChangeType::RemoveNode => self.raft.remove_node(nid),
         }
-        let mut cs = ConfState::new();
-        cs.set_nodes(self.raft.prs().voter_ids().iter().cloned().collect());
-        cs.set_learners(self.raft.prs().learner_ids().iter().cloned().collect());
+        let mut cs = ConfState::default();
+        cs.nodes = self.raft.prs().voter_ids().iter().cloned().collect();
+        cs.learners = self.raft.prs().learner_ids().iter().cloned().collect();
         cs
     }
 
     /// Step advances the state machine using the given message.
     pub fn step(&mut self, m: Message) -> Result<()> {
         // ignore unexpected local messages receiving over network
-        if is_local_msg(m.get_msg_type()) {
+        let mt = MessageType::from_i32(m.msg_type).unwrap();
+        if is_local_msg(mt) {
             return Err(Error::StepLocalMsg);
         }
-        if self.raft.prs().get(m.get_from()).is_some() || !is_response_msg(m.get_msg_type()) {
+        if self.raft.prs().get(m.from).is_some() || !is_response_msg(mt) {
             return self.raft.step(m);
         }
         Err(Error::StepPeerNotFound)
@@ -400,7 +405,7 @@ impl<T: Storage> RawNode<T> {
             return true;
         }
         let hs = raft.hard_state();
-        if hs != HardState::new() && hs != self.prev_hs {
+        if hs != HardState::default() && hs != self.prev_hs {
             return true;
         }
         false
@@ -423,7 +428,7 @@ impl<T: Storage> RawNode<T> {
     pub fn advance(&mut self, rd: Ready) {
         self.advance_append(rd);
 
-        let commit_idx = self.prev_hs.get_commit();
+        let commit_idx = self.prev_hs.commit;
         if commit_idx != 0 {
             // In most cases, prevHardSt and rd.HardState will be the same
             // because when there are new entries to apply we just sent a
@@ -455,9 +460,9 @@ impl<T: Storage> RawNode<T> {
 
     /// ReportUnreachable reports the given node is not reachable for the last send.
     pub fn report_unreachable(&mut self, id: u64) {
-        let mut m = Message::new();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgUnreachable);
-        m.set_from(id);
+        m.from = id;
         // we don't care if it is ok actually
         self.raft.step(m).is_ok();
     }
@@ -465,19 +470,19 @@ impl<T: Storage> RawNode<T> {
     /// ReportSnapshot reports the status of the sent snapshot.
     pub fn report_snapshot(&mut self, id: u64, status: SnapshotStatus) {
         let rej = status == SnapshotStatus::Failure;
-        let mut m = Message::new();
+        let mut m = Message::default();
         m.set_msg_type(MessageType::MsgSnapStatus);
-        m.set_from(id);
-        m.set_reject(rej);
+        m.from = id;
+        m.reject = rej;
         // we don't care if it is ok actually
         self.raft.step(m).is_ok();
     }
 
     /// TransferLeader tries to transfer leadership to the given transferee.
     pub fn transfer_leader(&mut self, transferee: u64) {
-        let mut m = Message::new();
-        m.set_msg_type(MessageType::MsgTransferLeader);
-        m.set_from(transferee);
+        let mut m = Message::default();
+        m.msg_type = MessageType::MsgTransferLeader as i32;
+        m.from = transferee;
         self.raft.step(m).is_ok();
     }
 
@@ -486,11 +491,11 @@ impl<T: Storage> RawNode<T> {
     /// index, any linearizable read requests issued before the read request can be
     /// processed safely. The read state will have the same rctx attached.
     pub fn read_index(&mut self, rctx: Vec<u8>) {
-        let mut m = Message::new();
-        m.set_msg_type(MessageType::MsgReadIndex);
-        let mut e = Entry::new();
-        e.set_data(rctx);
-        m.set_entries(RepeatedField::from_vec(vec![e]));
+        let mut m = Message::default();
+        m.msg_type = MessageType::MsgReadIndex as i32;
+        let mut e = Entry::default();
+        e.data = rctx;
+        m.entries = vec![e];
         self.raft.step(m).is_ok();
     }
 

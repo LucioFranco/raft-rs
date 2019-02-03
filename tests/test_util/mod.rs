@@ -171,7 +171,7 @@ pub fn hard_state(t: u64, c: u64, v: u64) -> HardState {
 pub const SOME_DATA: Option<&'static str> = Some("somedata");
 
 pub fn new_message_with_entries(from: u64, to: u64, t: MessageType, ents: Vec<Entry>) -> Message {
-    let mut m = Message::new();
+    let mut m = Message::default();
     m.set_from(from);
     m.set_to(to);
     m.set_msg_type(t);
@@ -209,9 +209,9 @@ pub fn empty_entry(term: u64, index: u64) -> Entry {
 
 pub fn new_snapshot(index: u64, term: u64, nodes: Vec<u64>) -> Snapshot {
     let mut s = Snapshot::new();
-    s.mut_metadata().set_index(index);
-    s.mut_metadata().set_term(term);
-    s.mut_metadata().mut_conf_state().set_nodes(nodes);
+    s.metadata.set_index(index);
+    s.metadata.set_term(term);
+    s.metadata.mut_conf_state().set_nodes(nodes);
     s
 }
 
@@ -295,7 +295,7 @@ impl Network {
                 let perc = self
                     .dropm
                     .get(&Connem {
-                        from: m.get_from(),
+                        from: m.from,
                         to: m.get_to(),
                     })
                     .cloned()

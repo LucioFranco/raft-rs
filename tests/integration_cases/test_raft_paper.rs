@@ -38,8 +38,8 @@ fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
     let msgs = r.read_messages();
     for m in msgs {
         assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
-        assert_eq!(m.get_entries().len(), 1);
-        assert!(m.get_entries()[0].get_data().is_empty());
+        assert_eq!(m.entries.len(), 1);
+        assert!(m.entries[0].get_data().is_empty());
         r.step(accept_and_reply(&m)).expect("");
     }
     // ignore further messages to refresh followers' commit index
@@ -55,9 +55,9 @@ fn commit_noop_entry(r: &mut Interface, s: &MemStorage) {
 
 fn accept_and_reply(m: &Message) -> Message {
     assert_eq!(m.get_msg_type(), MessageType::MsgAppend);
-    let mut reply = new_message(m.get_to(), m.get_from(), MessageType::MsgAppendResponse, 0);
-    reply.set_term(m.get_term());
-    reply.set_index(m.get_index() + m.get_entries().len() as u64);
+    let mut reply = new_message(m.get_to(), m.from, MessageType::MsgAppendResponse, 0);
+    reply.set_term(m.term);
+    reply.set_index(m.index + m.entries.len() as u64);
     reply
 }
 
@@ -312,7 +312,7 @@ fn test_candidate_fallback() {
         r.step(new_message(1, 1, MessageType::MsgHup, 0)).expect("");
         assert_eq!(r.state, StateRole::Candidate);
 
-        let term = m.get_term();
+        let term = m.term;
         r.step(m).expect("");
 
         if r.state != StateRole::Follower {
@@ -650,22 +650,22 @@ fn test_follower_check_msg_append() {
     let mut tests = vec![
         // match with committed entries
         (0, 0, 1, false, 0),
-        (ents[0].get_term(), ents[0].get_index(), 1, false, 0),
+        (ents[0].term, ents[0].index, 1, false, 0),
         // match with uncommitted entries
-        (ents[1].get_term(), ents[1].get_index(), 2, false, 0),
+        (ents[1].term, ents[1].index, 2, false, 0),
         // unmatch with existing entry
         (
-            ents[0].get_term(),
-            ents[1].get_index(),
-            ents[1].get_index(),
+            ents[0].term,
+            ents[1].index,
+            ents[1].index,
             true,
             2,
         ),
         // unexisting entry
         (
-            ents[1].get_term() + 1,
-            ents[1].get_index() + 1,
-            ents[1].get_index() + 1,
+            ents[1].term + 1,
+            ents[1].index + 1,
+            ents[1].index + 1,
             true,
             2,
         ),
@@ -938,13 +938,13 @@ fn test_vote_request() {
             if m.get_to() != i as u64 + 2 {
                 panic!("#{}.{}: to = {}, want {}", j, i, m.get_to(), i + 2);
             }
-            if m.get_term() != wterm {
-                panic!("#{}.{}: term = {}, want {}", j, i, m.get_term(), wterm);
+            if m.term != wterm {
+                panic!("#{}.{}: term = {}, want {}", j, i, m.term, wterm);
             }
-            let windex = ents.last().unwrap().get_index();
-            let wlogterm = ents.last().unwrap().get_term();
-            if m.get_index() != windex {
-                panic!("#{}.{}: index = {}, want {}", j, i, m.get_index(), windex);
+            let windex = ents.last().unwrap().index;
+            let wlogterm = ents.last().unwrap().term;
+            if m.index != windex {
+                panic!("#{}.{}: index = {}, want {}", j, i, m.index, windex);
             }
             if m.get_log_term() != wlogterm {
                 panic!(
